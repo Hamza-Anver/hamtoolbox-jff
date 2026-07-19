@@ -21,6 +21,14 @@ const router = createBrowserRouter([
             Component: m.default,
           })),
       },
+      {
+        path: "tools/qr-code-maker",
+        handle: { breadcrumb: ["Tools", "QR Code Maker"] },
+        lazy: () =>
+          import("../tools/qr-code-maker/qr-code-maker").then((m) => ({
+            Component: m.default,
+          })),
+      },
     ],
   },
 ])

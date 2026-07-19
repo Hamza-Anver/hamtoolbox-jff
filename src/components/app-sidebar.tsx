@@ -45,6 +45,11 @@ const data: { navMain: (NavItem & { items?: NavItem[] })[] } = {
           kind: "route",
         },
         {
+          title: "QR Code Maker",
+          url: "/tools/qr-code-maker",
+          kind: "route",
+        },
+        {
           title: "Data Fetching",
           url: "#",
           kind: "route",

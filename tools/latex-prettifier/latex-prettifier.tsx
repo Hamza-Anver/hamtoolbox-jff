@@ -9,6 +9,7 @@ import {
   ClipboardCopy,
   AlertTriangle,
   RotateCcw,
+  BookOpen,
 } from "lucide-react";
 import { toPng, toSvg } from "html-to-image";
 
@@ -57,10 +58,14 @@ const editorTheme = EditorView.theme({
   },
   ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px" },
   ".cm-activeLineGutter": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
+    backgroundColor: "color-mix(in oklch, var(--primary) 16%, var(--muted))",
+    color: "var(--primary)",
+    fontWeight: 600,
   },
-  ".cm-activeLine": { backgroundColor: "var(--accent)" },
+  ".cm-activeLine": {
+    backgroundColor: "color-mix(in oklch, var(--primary) 9%, transparent)",
+    boxShadow: "inset 2px 0 0 var(--primary)",
+  },
   ".cm-line:nth-of-type(even):not(.cm-activeLine)": {
     backgroundColor: "color-mix(in oklch, var(--foreground) 3%, transparent)",
   },
@@ -107,11 +112,14 @@ function ColorSwatchInput({
   );
 }
 
-// Customization settings persisted across visits. The equation text itself is intentionally
-// excluded — resetting/reloading styling shouldn't ever risk wiping what you typed.
+const EXAMPLE_INPUT =
+  "\\begin{aligned}\nax^2 + bx + c &= 0 \\\\\nx &= \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n\\end{aligned}";
+
+// Both the equation text and its styling persist across visits.
 const STORAGE_KEY = "latex-prettifier:settings";
 
 interface PersistedSettings {
+  input: string;
   currentTheme: ThemeKey;
   bgColor: string;
   fgColor: string;
@@ -126,6 +134,7 @@ interface PersistedSettings {
 }
 
 const DEFAULT_SETTINGS: PersistedSettings = {
+  input: EXAMPLE_INPUT,
   currentTheme: "light",
   bgColor: "#ffffff",
   fgColor: "#000000",
@@ -150,14 +159,12 @@ function loadPersistedSettings(): PersistedSettings {
 }
 
 export default function LatexPrettifier() {
-  const [input, setInput] = useState<string>(
-    "\\begin{aligned}\nax^2 + bx + c &= 0 \\\\\nx &= \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n\\end{aligned}",
-  );
+  // Customization States — initialized once from localStorage (or defaults)
+  const initialSettings = useMemo(() => loadPersistedSettings(), []);
+  const [input, setInput] = useState<string>(initialSettings.input);
   const [copiedText, setCopiedText] = useState<boolean>(false);
   const [copiedImg, setCopiedImg] = useState<boolean>(false);
 
-  // Customization States — initialized once from localStorage (or defaults)
-  const initialSettings = useMemo(() => loadPersistedSettings(), []);
   const [currentTheme, setCurrentTheme] = useState<ThemeKey>(
     initialSettings.currentTheme,
   );
@@ -188,9 +195,10 @@ export default function LatexPrettifier() {
     height: number;
   }>({ width: 0, height: 0 });
 
-  // Persist customization settings whenever any of them change
+  // Persist the equation and its styling whenever either changes
   useEffect(() => {
     const settings: PersistedSettings = {
+      input,
       currentTheme,
       bgColor,
       fgColor,
@@ -209,6 +217,7 @@ export default function LatexPrettifier() {
       // localStorage may be unavailable (private browsing, quota) — safe to ignore
     }
   }, [
+    input,
     currentTheme,
     bgColor,
     fgColor,
@@ -221,6 +230,8 @@ export default function LatexPrettifier() {
     borderWidth,
     padding,
   ]);
+
+  const loadExample = () => setInput(EXAMPLE_INPUT);
 
   const resetSettings = () => {
     setCurrentTheme(DEFAULT_SETTINGS.currentTheme);
@@ -401,22 +412,42 @@ export default function LatexPrettifier() {
         <CardContent className="p-4 flex flex-col gap-4 bg-muted/5 min-h-0 overflow-y-auto">
           {/* Colors */}
           <div className="space-y-2">
-            <Label>Color Palette Theme</Label>
-            <Select
-              value={currentTheme}
-              onValueChange={(v) => handleThemeChange(v as ThemeKey)}
-            >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Select a palette" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(THEMES).map(([key, t]) => (
-                  <SelectItem key={key} value={key}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-end gap-2">
+              <div className="flex-1 min-w-0 space-y-2">
+                <Label>Color Palette</Label>
+                <Select
+                  value={currentTheme}
+                  onValueChange={(v) => handleThemeChange(v as ThemeKey)}
+                >
+                  <SelectTrigger className="bg-background w-full">
+                    <SelectValue placeholder="Select a palette" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(THEMES).map(([key, t]) => (
+                      <SelectItem key={key} value={key}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2 h-9 shrink-0">
+                <input
+                  id="transparent-bg"
+                  type="checkbox"
+                  checked={transparentBg}
+                  onChange={(e) => setTransparentBg(e.target.checked)}
+                  className="h-4 w-4 rounded border cursor-pointer accent-foreground"
+                />
+                <Label
+                  htmlFor="transparent-bg"
+                  className="cursor-pointer font-normal whitespace-nowrap"
+                >
+                  Transparent BG
+                </Label>
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-2 pt-1">
               <div className="space-y-2">
@@ -444,29 +475,13 @@ export default function LatexPrettifier() {
                 />
               </div>
             </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                id="transparent-bg"
-                type="checkbox"
-                checked={transparentBg}
-                onChange={(e) => setTransparentBg(e.target.checked)}
-                className="h-4 w-4 rounded border cursor-pointer accent-foreground"
-              />
-              <Label
-                htmlFor="transparent-bg"
-                className="cursor-pointer font-normal"
-              >
-                Transparent background
-              </Label>
-            </div>
           </div>
 
           <Separator />
 
           {/* Border */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
+          <div className="grid grid-cols-[auto_1fr_1fr] gap-2 items-end">
+            <div className="flex items-center gap-2 h-9 pr-1">
               <input
                 id="show-border"
                 type="checkbox"
@@ -476,47 +491,45 @@ export default function LatexPrettifier() {
               />
               <Label
                 htmlFor="show-border"
-                className="cursor-pointer font-normal"
+                className="cursor-pointer font-normal whitespace-nowrap"
               >
                 Show border
               </Label>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="border-color"
-                  className={!showBorder ? "text-muted-foreground" : undefined}
-                >
-                  Color
-                </Label>
-                <ColorSwatchInput
-                  id="border-color"
-                  value={borderColor}
-                  disabled={!showBorder}
-                  onChange={setBorderColor}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label
+                htmlFor="border-color"
+                className={!showBorder ? "text-muted-foreground" : undefined}
+              >
+                Color
+              </Label>
+              <ColorSwatchInput
+                id="border-color"
+                value={borderColor}
+                disabled={!showBorder}
+                onChange={setBorderColor}
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label
-                  htmlFor="border-width"
-                  className={!showBorder ? "text-muted-foreground" : undefined}
-                >
-                  Width (px)
-                </Label>
-                <Input
-                  id="border-width"
-                  type="number"
-                  min={1}
-                  max={16}
-                  step={1}
-                  value={borderWidth}
-                  disabled={!showBorder}
-                  onChange={(e) => setBorderWidth(e.target.value)}
-                  className="h-9"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label
+                htmlFor="border-width"
+                className={!showBorder ? "text-muted-foreground" : undefined}
+              >
+                Width (px)
+              </Label>
+              <Input
+                id="border-width"
+                type="number"
+                min={1}
+                max={16}
+                step={1}
+                value={borderWidth}
+                disabled={!showBorder}
+                onChange={(e) => setBorderWidth(e.target.value)}
+                className="h-9"
+              />
             </div>
           </div>
 
@@ -569,15 +582,26 @@ export default function LatexPrettifier() {
 
           <Separator />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-end h-7 gap-1.5 text-xs text-muted-foreground"
-            onClick={resetSettings}
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reset to defaults
-          </Button>
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-muted-foreground"
+              onClick={loadExample}
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Load Example LaTeX
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-muted-foreground"
+              onClick={resetSettings}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset to Default Options
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -650,20 +674,6 @@ export default function LatexPrettifier() {
             </span>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-8 gap-1.5 text-xs bg-background"
-            onClick={copyImageToClipboard}
-          >
-            {copiedImg ? (
-              <Check className="h-3.5 w-3.5 text-emerald-500" />
-            ) : (
-              <ClipboardCopy className="h-3.5 w-3.5" />
-            )}
-            Copy Image
-          </Button>
-
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -684,6 +694,19 @@ export default function LatexPrettifier() {
               Download SVG
             </Button>
           </div>
+
+          <Button
+            size="sm"
+            className="w-full h-8 gap-1.5 text-xs"
+            onClick={copyImageToClipboard}
+          >
+            {copiedImg ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <ClipboardCopy className="h-3.5 w-3.5" />
+            )}
+            Copy Image
+          </Button>
         </CardContent>
       </Card>
     </div>

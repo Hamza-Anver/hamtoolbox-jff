@@ -1,15 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
-import { Copy, Check, Image as ImageIcon, ClipboardCopy } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { useState, useEffect, useMemo, useRef } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+import {
+  Copy,
+  Check,
+  Image as ImageIcon,
+  FileCode,
+  ClipboardCopy,
+  AlertTriangle,
+  RotateCcw,
+} from "lucide-react";
+import { toPng, toSvg } from "html-to-image";
 
 // CodeMirror Extensions
-import CodeMirror from '@uiw/react-codemirror';
-import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
-import { EditorView } from '@codemirror/view';
-import { StreamLanguage, HighlightStyle, syntaxHighlighting, type StringStream } from '@codemirror/language';
-import { tags } from '@lezer/highlight';
+import CodeMirror from "@uiw/react-codemirror";
+import { EditorView } from "@codemirror/view";
+import { latex } from "codemirror-lang-latex";
 
 // Shadcn UI Imports
 import { Button } from "@/components/ui/button";
@@ -17,50 +23,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const latexCompletions = [
-  { label: '\\frac{a}{b}', type: 'keyword', detail: 'fraction' },
-  { label: '\\sqrt{x}', type: 'keyword', detail: 'square root' },
-  { label: '\\alpha', type: 'variable', detail: 'alpha' },
-  { label: '\\beta', type: 'variable', detail: 'beta' },
-  { label: '\\sum_{i=1}^n', type: 'keyword', detail: 'summation' },
-  { label: '\\int_{a}^{b}', type: 'keyword', detail: 'integral' },
-  { label: '\\infty', type: 'variable', detail: 'infinity' },
-];
-
-function latexAutocompletion(context: CompletionContext) {
-  const word = context.matchBefore(/\\[\w]*/);
-  if (!word) return null;
-  if (word.from === word.to && !context.explicit) return null;
-  return { from: word.from, options: latexCompletions };
-}
-
-// Minimal LaTeX tokenizer for syntax highlighting
-const latexStreamParser = {
-  token(stream: StringStream) {
-    if (stream.eatSpace()) return null;
-    if (stream.match(/%.*/)) return 'comment';
-    if (stream.match(/\\\\|\\[a-zA-Z]+|\\./)) return 'keyword';
-    if (stream.match(/[{}]/)) return 'bracket';
-    if (stream.match(/[_^]/)) return 'operator';
-    if (stream.match(/\d+(\.\d+)?/)) return 'number';
-    if (stream.match(/\$+/)) return 'string';
-    stream.next();
-    return null;
+// Scoped for editing a single equation snippet, not a full .tex document —
+// document/reference/citation checks don't apply here.
+const latexExtension = latex({
+  fileName: "equation.tex",
+  linter: {
+    checkMissingDocumentEnv: false,
+    checkUnmatchedEnvironments: true,
+    checkMissingReferences: false,
+    checkUnclosedBraces: true,
+    checkDuplicateLabels: false,
+    checkCitesWithoutBibliography: false,
   },
-};
-
-const latexLanguage = StreamLanguage.define(latexStreamParser);
-
-const latexHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: "var(--primary)", fontWeight: 600 },
-  { tag: tags.bracket, color: "var(--muted-foreground)" },
-  { tag: tags.operator, color: "var(--foreground)", fontWeight: 700 },
-  { tag: tags.number, color: "var(--chart-2)" },
-  { tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
-  { tag: tags.string, color: "var(--chart-1)" },
-]);
+});
 
 const editorTheme = EditorView.theme({
   "&": { height: "100%", fontSize: "13px" },
@@ -89,14 +72,26 @@ const THEMES = {
   dark: { name: "Dark", bg: "#000000", fg: "#ffffff" },
   sepia: { name: "Sepia", bg: "#f4ecd8", fg: "#433422" },
   slate: { name: "Slate", bg: "#1e293b", fg: "#f1f5f9" },
-  custom: { name: "Custom", bg: "#ffffff", fg: "#000000" }
+  custom: { name: "Custom", bg: "#ffffff", fg: "#000000" },
 };
 
 type ThemeKey = keyof typeof THEMES;
 
-function ColorSwatchInput({ id, value, onChange, disabled }: { id: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
+function ColorSwatchInput({
+  id,
+  value,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
   return (
-    <div className={`flex items-center gap-1.5 border rounded-md px-2 h-9 bg-background ${disabled ? 'opacity-50' : ''}`}>
+    <div
+      className={`flex items-center gap-1.5 border rounded-md px-2 h-9 bg-background ${disabled ? "opacity-50" : ""}`}
+    >
       <input
         id={id}
         type="color"
@@ -105,28 +100,141 @@ function ColorSwatchInput({ id, value, onChange, disabled }: { id: string; value
         onChange={(e) => onChange(e.target.value)}
         className="w-5 h-5 rounded-md border cursor-pointer p-0 bg-transparent shrink-0 disabled:cursor-not-allowed"
       />
-      <span className="text-[11px] font-mono uppercase tracking-tighter overflow-hidden text-ellipsis whitespace-nowrap">{value}</span>
+      <span className="text-[11px] font-mono uppercase tracking-tighter overflow-hidden text-ellipsis whitespace-nowrap">
+        {value}
+      </span>
     </div>
   );
 }
 
+// Customization settings persisted across visits. The equation text itself is intentionally
+// excluded — resetting/reloading styling shouldn't ever risk wiping what you typed.
+const STORAGE_KEY = "latex-prettifier:settings";
+
+interface PersistedSettings {
+  currentTheme: ThemeKey;
+  bgColor: string;
+  fgColor: string;
+  transparentBg: boolean;
+  exportScale: string;
+  fontSize: string;
+  cornerRadius: string;
+  showBorder: boolean;
+  borderColor: string;
+  borderWidth: string;
+  padding: string;
+}
+
+const DEFAULT_SETTINGS: PersistedSettings = {
+  currentTheme: "light",
+  bgColor: "#ffffff",
+  fgColor: "#000000",
+  transparentBg: false,
+  exportScale: "300",
+  fontSize: "24",
+  cornerRadius: "0",
+  showBorder: false,
+  borderColor: "#d4d4d8",
+  borderWidth: "1",
+  padding: "32",
+};
+
+function loadPersistedSettings(): PersistedSettings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
 export default function LatexPrettifier() {
-  const [input, setInput] = useState<string>('\\begin{aligned}\nax^2 + bx + c &= 0 \\\\\nx &= \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n\\end{aligned}');
+  const [input, setInput] = useState<string>(
+    "\\begin{aligned}\nax^2 + bx + c &= 0 \\\\\nx &= \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n\\end{aligned}",
+  );
   const [copiedText, setCopiedText] = useState<boolean>(false);
   const [copiedImg, setCopiedImg] = useState<boolean>(false);
 
-  // Customization States
-  const [currentTheme, setCurrentTheme] = useState<ThemeKey>('light');
-  const [bgColor, setBgColor] = useState<string>('#ffffff');
-  const [fgColor, setFgColor] = useState<string>('#000000');
-  const [transparentBg, setTransparentBg] = useState<boolean>(false);
-  const [exportScale, setExportScale] = useState<string>('300'); // Export scale, as a percentage
-  const [cornerRadius, setCornerRadius] = useState<string>('0'); // Corner radius, in px
-  const [showBorder, setShowBorder] = useState<boolean>(false);
-  const [borderColor, setBorderColor] = useState<string>('#d4d4d8');
-  const [borderWidth, setBorderWidth] = useState<string>('1'); // Border width, in px
-  const [padding, setPadding] = useState<string>('32'); // Padding around the equation, in px
-  const [previewSize, setPreviewSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  // Customization States — initialized once from localStorage (or defaults)
+  const initialSettings = useMemo(() => loadPersistedSettings(), []);
+  const [currentTheme, setCurrentTheme] = useState<ThemeKey>(
+    initialSettings.currentTheme,
+  );
+  const [bgColor, setBgColor] = useState<string>(initialSettings.bgColor);
+  const [fgColor, setFgColor] = useState<string>(initialSettings.fgColor);
+  const [transparentBg, setTransparentBg] = useState<boolean>(
+    initialSettings.transparentBg,
+  );
+  const [exportScale, setExportScale] = useState<string>(
+    initialSettings.exportScale,
+  ); // Export scale, as a percentage
+  const [fontSize, setFontSize] = useState<string>(initialSettings.fontSize); // Equation font size, in px
+  const [cornerRadius, setCornerRadius] = useState<string>(
+    initialSettings.cornerRadius,
+  ); // Corner radius, in px
+  const [showBorder, setShowBorder] = useState<boolean>(
+    initialSettings.showBorder,
+  );
+  const [borderColor, setBorderColor] = useState<string>(
+    initialSettings.borderColor,
+  );
+  const [borderWidth, setBorderWidth] = useState<string>(
+    initialSettings.borderWidth,
+  ); // Border width, in px
+  const [padding, setPadding] = useState<string>(initialSettings.padding); // Padding around the equation, in px
+  const [previewSize, setPreviewSize] = useState<{
+    width: number;
+    height: number;
+  }>({ width: 0, height: 0 });
+
+  // Persist customization settings whenever any of them change
+  useEffect(() => {
+    const settings: PersistedSettings = {
+      currentTheme,
+      bgColor,
+      fgColor,
+      transparentBg,
+      exportScale,
+      fontSize,
+      cornerRadius,
+      showBorder,
+      borderColor,
+      borderWidth,
+      padding,
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      // localStorage may be unavailable (private browsing, quota) — safe to ignore
+    }
+  }, [
+    currentTheme,
+    bgColor,
+    fgColor,
+    transparentBg,
+    exportScale,
+    fontSize,
+    cornerRadius,
+    showBorder,
+    borderColor,
+    borderWidth,
+    padding,
+  ]);
+
+  const resetSettings = () => {
+    setCurrentTheme(DEFAULT_SETTINGS.currentTheme);
+    setBgColor(DEFAULT_SETTINGS.bgColor);
+    setFgColor(DEFAULT_SETTINGS.fgColor);
+    setTransparentBg(DEFAULT_SETTINGS.transparentBg);
+    setExportScale(DEFAULT_SETTINGS.exportScale);
+    setFontSize(DEFAULT_SETTINGS.fontSize);
+    setCornerRadius(DEFAULT_SETTINGS.cornerRadius);
+    setShowBorder(DEFAULT_SETTINGS.showBorder);
+    setBorderColor(DEFAULT_SETTINGS.borderColor);
+    setBorderWidth(DEFAULT_SETTINGS.borderWidth);
+    setPadding(DEFAULT_SETTINGS.padding);
+  };
 
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const katexRenderRef = useRef<HTMLDivElement>(null);
@@ -149,24 +257,33 @@ export default function LatexPrettifier() {
   const outputWidth = Math.round(previewSize.width * scaleFactor);
   const outputHeight = Math.round(previewSize.height * scaleFactor);
 
-  // Render LaTeX math markup
-  useEffect(() => {
-    if (katexRenderRef.current) {
-      try {
-        katex.render(input || '\\text{Type something...}', katexRenderRef.current, {
-          displayMode: true,
-          throwOnError: false,
-        });
-      } catch (err) {
-        console.error(err);
-      }
+  // Derive a human-readable parse error, purely from input — no DOM involved.
+  const renderError = useMemo(() => {
+    try {
+      katex.renderToString(input || "\\text{Type something...}", {
+        displayMode: true,
+        throwOnError: true,
+      });
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "Invalid LaTeX";
     }
+  }, [input]);
+
+  // Render into the DOM with throwOnError: false so KaTeX's own inline error markup
+  // still shows roughly where things broke, even when renderError is set above.
+  useEffect(() => {
+    if (!katexRenderRef.current) return;
+    katex.render(input || "\\text{Type something...}", katexRenderRef.current, {
+      displayMode: true,
+      throwOnError: false,
+    });
   }, [input]);
 
   // Handle Preset Changes
   const handleThemeChange = (themeKey: ThemeKey) => {
     setCurrentTheme(themeKey);
-    if (themeKey !== 'custom') {
+    if (themeKey !== "custom") {
       setBgColor(THEMES[themeKey].bg);
       setFgColor(THEMES[themeKey].fg);
     }
@@ -178,17 +295,39 @@ export default function LatexPrettifier() {
     return toPng(previewContainerRef.current, { pixelRatio: scaleFactor });
   };
 
+  const renderSvg = () => {
+    if (!previewContainerRef.current) return null;
+    return toSvg(previewContainerRef.current, { pixelRatio: scaleFactor });
+  };
+
+  const triggerDownload = (dataUrl: string, extension: string) => {
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, -5);
+    const link = document.createElement("a");
+    link.download = `equation-${timestamp}.${extension}`;
+    link.href = dataUrl;
+    link.click();
+  };
+
   const downloadImage = async () => {
     try {
       const dataUrl = await renderPng();
       if (!dataUrl) return;
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const link = document.createElement('a');
-      link.download = `equation-${timestamp}.png`;
-      link.href = dataUrl;
-      link.click();
+      triggerDownload(dataUrl, "png");
     } catch (error) {
-      console.error('Image generation failed', error);
+      console.error("Image generation failed", error);
+    }
+  };
+
+  const downloadSvg = async () => {
+    try {
+      const dataUrl = await renderSvg();
+      if (!dataUrl) return;
+      triggerDownload(dataUrl, "svg");
+    } catch (error) {
+      console.error("SVG generation failed", error);
     }
   };
 
@@ -199,12 +338,12 @@ export default function LatexPrettifier() {
       const res = await fetch(dataUrl);
       const blob = await res.blob();
       await navigator.clipboard.write([
-        new ClipboardItem({ [blob.type]: blob })
+        new ClipboardItem({ [blob.type]: blob }),
       ]);
       setCopiedImg(true);
       setTimeout(() => setCopiedImg(false), 2000);
     } catch (error) {
-      console.error('Failed to copy image to clipboard', error);
+      console.error("Failed to copy image to clipboard", error);
     }
   };
 
@@ -216,11 +355,12 @@ export default function LatexPrettifier() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-1 md:h-[calc(100svh-6rem)]">
-
       {/* LEFT COLUMN: Unified Workspace & Configuration */}
       <Card className="flex flex-col overflow-hidden h-full gap-0 py-0">
         <CardHeader className="py-3 px-4 border-b bg-muted/20">
-          <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">LaTeX Input</CardTitle>
+          <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            LaTeX Input
+          </CardTitle>
         </CardHeader>
 
         {/* Editor Content Area */}
@@ -229,13 +369,14 @@ export default function LatexPrettifier() {
             value={input}
             height="100%"
             theme="none"
-            basicSetup={{ autocompletion: false, foldGutter: false }}
-            extensions={[
-              latexLanguage,
-              syntaxHighlighting(latexHighlightStyle),
-              autocompletion({ override: [latexAutocompletion] }),
-              editorTheme,
-            ]}
+            basicSetup={{
+              autocompletion: false,
+              completionKeymap: false,
+              foldGutter: false,
+              closeBrackets: false,
+              bracketMatching: false,
+            }}
+            extensions={[latexExtension, editorTheme]}
             onChange={(value) => setInput(value)}
             className="h-full focus-within:ring-0"
           />
@@ -245,8 +386,12 @@ export default function LatexPrettifier() {
             className="absolute bottom-2.5 right-2.5 h-7 gap-1.5 text-xs bg-background/90 backdrop-blur-sm shadow-sm"
             onClick={copyRawTex}
           >
-            {copiedText ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-            {copiedText ? 'Copied!' : 'Copy'}
+            {copiedText ? (
+              <Check className="h-3.5 w-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            {copiedText ? "Copied!" : "Copy"}
           </Button>
         </div>
 
@@ -257,13 +402,18 @@ export default function LatexPrettifier() {
           {/* Colors */}
           <div className="space-y-2">
             <Label>Color Palette Theme</Label>
-            <Select value={currentTheme} onValueChange={(v) => handleThemeChange(v as ThemeKey)}>
+            <Select
+              value={currentTheme}
+              onValueChange={(v) => handleThemeChange(v as ThemeKey)}
+            >
               <SelectTrigger className="bg-background">
                 <SelectValue placeholder="Select a palette" />
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(THEMES).map(([key, t]) => (
-                  <SelectItem key={key} value={key}>{t.name}</SelectItem>
+                  <SelectItem key={key} value={key}>
+                    {t.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -277,7 +427,7 @@ export default function LatexPrettifier() {
                   disabled={transparentBg}
                   onChange={(v) => {
                     setBgColor(v);
-                    setCurrentTheme('custom');
+                    setCurrentTheme("custom");
                   }}
                 />
               </div>
@@ -289,7 +439,7 @@ export default function LatexPrettifier() {
                   value={fgColor}
                   onChange={(v) => {
                     setFgColor(v);
-                    setCurrentTheme('custom');
+                    setCurrentTheme("custom");
                   }}
                 />
               </div>
@@ -303,7 +453,12 @@ export default function LatexPrettifier() {
                 onChange={(e) => setTransparentBg(e.target.checked)}
                 className="h-4 w-4 rounded border cursor-pointer accent-foreground"
               />
-              <Label htmlFor="transparent-bg" className="cursor-pointer font-normal">Transparent background</Label>
+              <Label
+                htmlFor="transparent-bg"
+                className="cursor-pointer font-normal"
+              >
+                Transparent background
+              </Label>
             </div>
           </div>
 
@@ -319,12 +474,22 @@ export default function LatexPrettifier() {
                 onChange={(e) => setShowBorder(e.target.checked)}
                 className="h-4 w-4 rounded border cursor-pointer accent-foreground"
               />
-              <Label htmlFor="show-border" className="cursor-pointer font-normal">Show border</Label>
+              <Label
+                htmlFor="show-border"
+                className="cursor-pointer font-normal"
+              >
+                Show border
+              </Label>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2">
-                <Label htmlFor="border-color" className={!showBorder ? 'text-muted-foreground' : undefined}>Color</Label>
+                <Label
+                  htmlFor="border-color"
+                  className={!showBorder ? "text-muted-foreground" : undefined}
+                >
+                  Color
+                </Label>
                 <ColorSwatchInput
                   id="border-color"
                   value={borderColor}
@@ -334,7 +499,12 @@ export default function LatexPrettifier() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="border-width" className={!showBorder ? 'text-muted-foreground' : undefined}>Width (px)</Label>
+                <Label
+                  htmlFor="border-width"
+                  className={!showBorder ? "text-muted-foreground" : undefined}
+                >
+                  Width (px)
+                </Label>
                 <Input
                   id="border-width"
                   type="number"
@@ -353,7 +523,21 @@ export default function LatexPrettifier() {
           <Separator />
 
           {/* Shape & Spacing */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-2">
+              <Label htmlFor="font-size">Font (px)</Label>
+              <Input
+                id="font-size"
+                type="number"
+                min={12}
+                max={96}
+                step={2}
+                value={fontSize}
+                onChange={(e) => setFontSize(e.target.value)}
+                className="h-9"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="corner-radius">Radius (px)</Label>
               <Input
@@ -382,46 +566,74 @@ export default function LatexPrettifier() {
               />
             </div>
           </div>
+
+          <Separator />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="self-end h-7 gap-1.5 text-xs text-muted-foreground"
+            onClick={resetSettings}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset to defaults
+          </Button>
         </CardContent>
       </Card>
 
       {/* RIGHT COLUMN: Unified Preview & Toolkit Output */}
       <Card className="flex flex-col overflow-hidden h-full gap-0 py-0">
         <CardHeader className="py-3 px-4 border-b bg-muted/20">
-          <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Preview</CardTitle>
+          <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Preview
+          </CardTitle>
         </CardHeader>
 
         {/* Display Canvas Only — checkerboard is always visible underneath so it's clear what's actually transparent */}
         <div
           className="flex-1 min-h-[240px] p-6 flex items-center justify-center overflow-auto select-none"
           style={{
-            backgroundImage: 'conic-gradient(color-mix(in oklch, var(--foreground) 8%, transparent) 25%, transparent 0 50%, color-mix(in oklch, var(--foreground) 8%, transparent) 0 75%, transparent 0)',
-            backgroundSize: '20px 20px',
+            backgroundImage:
+              "conic-gradient(color-mix(in oklch, var(--foreground) 8%, transparent) 25%, transparent 0 50%, color-mix(in oklch, var(--foreground) 8%, transparent) 0 75%, transparent 0)",
+            backgroundSize: "20px 20px",
           }}
         >
           <div
             ref={previewContainerRef}
             style={{
-              backgroundColor: transparentBg ? 'transparent' : bgColor,
+              backgroundColor: transparentBg ? "transparent" : bgColor,
               color: fgColor,
               padding: `${padding}px`,
               borderWidth: showBorder ? `${borderWidth}px` : 0,
               borderColor,
-              borderStyle: 'solid',
+              borderStyle: "solid",
               borderRadius: `${cornerRadius}px`,
             }}
             className="shadow-sm transition-colors duration-150 overflow-x-auto max-w-full text-center"
           >
-            <div ref={katexRenderRef} className="text-2xl whitespace-nowrap px-4" />
+            <div
+              ref={katexRenderRef}
+              style={{ fontSize: `${fontSize}px` }}
+              className="whitespace-nowrap px-4"
+            />
           </div>
         </div>
+
+        {renderError && (
+          <div className="px-4 py-2.5 flex items-start gap-2 text-xs text-destructive bg-destructive/10 border-t border-destructive/20 max-h-24 overflow-y-auto">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{renderError}</span>
+          </div>
+        )}
 
         <Separator />
 
         {/* Integrated Export Controls Container */}
         <CardContent className="p-4 space-y-3 bg-muted/5">
           <div className="flex items-center gap-2">
-            <Label htmlFor="export-scale" className="shrink-0">Export Scale</Label>
+            <Label htmlFor="export-scale" className="shrink-0">
+              Export Scale
+            </Label>
             <Input
               id="export-scale"
               type="number"
@@ -438,19 +650,42 @@ export default function LatexPrettifier() {
             </span>
           </div>
 
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-8 gap-1.5 text-xs bg-background"
+            onClick={copyImageToClipboard}
+          >
+            {copiedImg ? (
+              <Check className="h-3.5 w-3.5 text-emerald-500" />
+            ) : (
+              <ClipboardCopy className="h-3.5 w-3.5" />
+            )}
+            Copy Image
+          </Button>
+
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="flex-1 h-8 gap-1.5 text-xs bg-background" onClick={copyImageToClipboard}>
-              {copiedImg ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
-              Copy Image
-            </Button>
-            <Button variant="outline" size="sm" className="flex-1 h-8 gap-1.5 text-xs bg-background" onClick={downloadImage}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-8 gap-1.5 text-xs bg-background"
+              onClick={downloadImage}
+            >
               <ImageIcon className="h-3.5 w-3.5" />
               Download PNG
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-8 gap-1.5 text-xs bg-background"
+              onClick={downloadSvg}
+            >
+              <FileCode className="h-3.5 w-3.5" />
+              Download SVG
             </Button>
           </div>
         </CardContent>
       </Card>
-
     </div>
   );
 }

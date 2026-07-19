@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router"
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
@@ -14,6 +15,7 @@ import {
   SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { ModeToggle } from "@/components/mode-toggle"
 import { Toolbox } from "lucide-react"
 
 // "route" items are handled by the in-app router (React Router) and use
@@ -112,6 +114,9 @@ export function AppSidebar(props: AppSidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="items-end">
+        <ModeToggle />
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

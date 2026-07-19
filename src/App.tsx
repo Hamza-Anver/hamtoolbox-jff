@@ -14,10 +14,10 @@ const router = createBrowserRouter([
           import("@/pages/about").then((m) => ({ Component: m.default })),
       },
       {
-        path: "tools/latex-prettifier",
-        handle: { breadcrumb: ["Tools", "LaTeX Prettifier"] },
+        path: "tools/latex-to-image",
+        handle: { breadcrumb: ["Tools", "LaTeX to Image"] },
         lazy: () =>
-          import("../tools/latex-prettifier/latex-prettifier").then((m) => ({
+          import("../tools/latex-to-image/latex-to-image").then((m) => ({
             Component: m.default,
           })),
       },

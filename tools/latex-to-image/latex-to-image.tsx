@@ -116,7 +116,7 @@ const EXAMPLE_INPUT =
   "\\begin{aligned}\nax^2 + bx + c &= 0 \\\\\nx &= \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n\\end{aligned}";
 
 // Both the equation text and its styling persist across visits.
-const STORAGE_KEY = "latex-prettifier:settings";
+const STORAGE_KEY = "latex-to-image:settings";
 
 interface PersistedSettings {
   input: string;
@@ -158,7 +158,7 @@ function loadPersistedSettings(): PersistedSettings {
   }
 }
 
-export default function LatexPrettifier() {
+export default function LatexToImage() {
   // Customization States — initialized once from localStorage (or defaults)
   const initialSettings = useMemo(() => loadPersistedSettings(), []);
   const [input, setInput] = useState<string>(initialSettings.input);

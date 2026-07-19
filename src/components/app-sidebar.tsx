@@ -38,8 +38,8 @@ const data: { navMain: (NavItem & { items?: NavItem[] })[] } = {
       url: "#",
       items: [
         {
-          title: "LaTeX Prettifier",
-          url: "/tools/latex-prettifier",
+          title: "LaTeX to Image",
+          url: "/tools/latex-to-image",
           kind: "route",
         },
         {

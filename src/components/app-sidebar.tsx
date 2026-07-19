@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Link, useLocation } from "react-router"
 
 import {
   Sidebar,
@@ -15,12 +16,22 @@ import {
 } from "@/components/ui/sidebar"
 import { Toolbox } from "lucide-react"
 
-// This is sample data.
-const data = {
+// "route" items are handled by the in-app router (React Router) and use
+// client-side navigation. "external" items point at a page built outside
+// this app (a different stack, e.g. Rust/WASM) and get a normal full-page
+// link instead.
+type NavItem = {
+  title: string
+  url: string
+  kind?: "route" | "external"
+}
+
+const data: { navMain: (NavItem & { items?: NavItem[] })[] } = {
   navMain: [
     {
       title: "About This Project",
-      url: "/"
+      url: "/",
+      kind: "route",
     },
     {
       title: "Tools",
@@ -28,28 +39,37 @@ const data = {
       items: [
         {
           title: "LaTeX Prettifier",
-          url: "/tools/latex-prettifier/",
+          url: "/tools/latex-prettifier",
+          kind: "route",
         },
         {
           title: "Data Fetching",
           url: "#",
-        }
+          kind: "route",
+        },
       ],
     },
   ],
 }
 
-interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  activeUrl?: string
+// Base UI's `render` prop clones whatever element it's given and merges
+// computed classes/handlers/attrs onto it directly, so this must return a
+// plain host element (<a> or <Link>) rather than a wrapping component.
+function navLinkElement(item: NavItem) {
+  return item.kind === "external" ? <a href={item.url} /> : <Link to={item.url} />
 }
 
-export function AppSidebar({ activeUrl, ...props }: AppSidebarProps) {
+type AppSidebarProps = React.ComponentProps<typeof Sidebar>
+
+export function AppSidebar(props: AppSidebarProps) {
+  const location = useLocation()
+
   return (
     <Sidebar {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<a href="#" />}>
+            <SidebarMenuButton size="lg" render={<Link to="/" />}>
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <Toolbox className="size-4" />
               </div>
@@ -67,8 +87,9 @@ export function AppSidebar({ activeUrl, ...props }: AppSidebarProps) {
             {data.navMain.map((item) => (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
-                  isActive={activeUrl === item.url}
-                  render={<a href={item.url} className="font-medium" />}
+                  isActive={location.pathname === item.url}
+                  className="font-medium"
+                  render={navLinkElement(item)}
                 >
                   {item.title}
                 </SidebarMenuButton>
@@ -77,8 +98,8 @@ export function AppSidebar({ activeUrl, ...props }: AppSidebarProps) {
                     {item.items.map((item) => (
                       <SidebarMenuSubItem key={item.title}>
                         <SidebarMenuSubButton
-                          isActive={activeUrl === item.url}
-                          render={<a href={item.url} />}
+                          isActive={location.pathname === item.url}
+                          render={navLinkElement(item)}
                         >
                           {item.title}
                         </SidebarMenuSubButton>

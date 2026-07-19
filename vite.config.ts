@@ -13,11 +13,15 @@ export default defineConfig({
     },
   },
 
+  // Tools built with this app's React/Vite stack live under `tools/<name>/`
+  // and are wired up as lazy-loaded routes in src/App.tsx, so they don't
+  // need an entry here. Add an entry here only for a tool that's a separate
+  // build (a different stack entirely, e.g. Rust/WASM) with its own
+  // index.html, linked from the sidebar as an "external" nav item.
   build: {
     rollupOptions: {
       input: {
         main: path.resolve(import.meta.dirname, 'index.html'),
-        prettifier: path.resolve(import.meta.dirname, 'tools/latex-prettifier/index.html')
       },
     },
   },

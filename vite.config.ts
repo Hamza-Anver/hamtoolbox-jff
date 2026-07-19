@@ -11,5 +11,14 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
-  }
+  },
+
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, 'index.html'),
+        prettifier: path.resolve(import.meta.dirname, 'tools/latex-prettifier/index.html')
+      },
+    },
+  },
 })

@@ -47,7 +47,7 @@ type CornerStyle =
 
 type LogoMode = "none" | "upload" | "url" | "emoji" | "text";
 
-type CaptionPosition = "none" | "top" | "bottom" | "left" | "right";
+type CaptionPosition = "none" | "top" | "bottom";
 
 // The three generic font families Tailwind ships out of the box — font-sans
 // resolves to this project's Inter theme, font-serif/font-mono fall back to
@@ -92,8 +92,6 @@ const CAPTION_POSITIONS: { value: CaptionPosition; label: string }[] = [
   { value: "none", label: "None" },
   { value: "top", label: "Above" },
   { value: "bottom", label: "Below" },
-  { value: "left", label: "Left" },
-  { value: "right", label: "Right" },
 ];
 
 const CAPTION_FONTS: { value: CaptionFont; label: string; className: string }[] = [
@@ -210,7 +208,7 @@ const DEFAULT_SETTINGS: PersistedSettings = {
   captionFontSize: "16",
   captionColor: "#000000",
   captionFont: "sans",
-  captionGap: "12",
+  captionGap: "24",
 };
 
 function loadPersistedSettings(): PersistedSettings {
@@ -458,10 +456,14 @@ export default function QrCodeMaker() {
     reader.readAsDataURL(file);
   };
 
-  const triggerDownload = (dataUrl: string, extension: string) => {
+  const timestampedFilename = () => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+    return `qr-code-${timestamp}`;
+  };
+
+  const triggerDownload = (dataUrl: string, extension: string) => {
     const link = document.createElement("a");
-    link.download = `qr-code-${timestamp}.${extension}`;
+    link.download = `${timestampedFilename()}.${extension}`;
     link.href = dataUrl;
     link.click();
   };
@@ -481,13 +483,15 @@ export default function QrCodeMaker() {
   // caption sits flush against that edge; positive values pull it inward,
   // into the quiet zone; negative values push it outward, past the quiet
   // zone, growing the composite instead of overlapping the QR.
-  const isSideCaption = captionPosition === "left" || captionPosition === "right";
   const captionOffset = -(Number(captionGap) || 0);
 
   const downloadPng = async () => {
     try {
       if (captionPosition === "none") {
-        await qrCodeRef.current?.download({ name: "qr-code", extension: "png" });
+        await qrCodeRef.current?.download({
+          name: timestampedFilename(),
+          extension: "png",
+        });
         return;
       }
       if (!compositeRef.current) return;
@@ -503,7 +507,10 @@ export default function QrCodeMaker() {
   const downloadSvg = async () => {
     try {
       if (captionPosition === "none") {
-        await qrCodeRef.current?.download({ name: "qr-code", extension: "svg" });
+        await qrCodeRef.current?.download({
+          name: timestampedFilename(),
+          extension: "svg",
+        });
         return;
       }
       if (!compositeRef.current) return;
@@ -986,33 +993,27 @@ export default function QrCodeMaker() {
           <div
             ref={compositeRef}
             className={cn(
-              "flex items-center",
+              "flex flex-col items-center",
               captionPosition === "top" && "flex-col-reverse",
-              captionPosition === "bottom" && "flex-col",
-              captionPosition === "left" && "flex-row-reverse",
-              captionPosition === "right" && "flex-row",
             )}
+            style={{ width: "min(100%, 360px)" }}
           >
             <div
               ref={previewRef}
-              className="shadow-sm shrink-0 [&>canvas]:w-full [&>canvas]:h-full [&>svg]:w-full [&>svg]:h-full"
-              style={{ width: "min(100%, 360px)", aspectRatio: "1 / 1" }}
+              className="w-full shadow-sm shrink-0 [&>canvas]:w-full [&>canvas]:h-full [&>svg]:w-full [&>svg]:h-full"
+              style={{ aspectRatio: "1 / 1" }}
             />
             {captionPosition !== "none" && (
               <span
                 className={cn(
-                  "text-center break-all leading-tight",
+                  "text-center break-all leading-tight max-w-full",
                   CAPTION_FONTS.find((font) => font.value === captionFont)?.className,
                 )}
                 style={{
                   color: captionColor,
                   fontSize: `${captionFontSize}px`,
-                  maxWidth: "min(100%, 360px)",
-                  writingMode: isSideCaption ? "vertical-rl" : "horizontal-tb",
                   marginTop: captionPosition === "bottom" ? captionOffset : undefined,
                   marginBottom: captionPosition === "top" ? captionOffset : undefined,
-                  marginLeft: captionPosition === "right" ? captionOffset : undefined,
-                  marginRight: captionPosition === "left" ? captionOffset : undefined,
                 }}
               >
                 {captionText.trim() || EXAMPLE_INPUT}

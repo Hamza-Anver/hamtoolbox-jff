@@ -61,7 +61,7 @@ type ContentType = "link" | "vcard" | "wifi" | "email" | "phone";
 
 type WifiEncryption = "WPA" | "WEP" | "nopass";
 
-type LogoMode = "none" | "upload" | "url" | "emoji" | "text";
+type LogoMode = "none" | "upload" | "url" | "text";
 
 type CaptionPosition = "none" | "top" | "bottom";
 
@@ -114,8 +114,7 @@ const LOGO_MODES: { value: LogoMode; label: string }[] = [
   { value: "none", label: "None" },
   { value: "upload", label: "Uploaded Image" },
   { value: "url", label: "Image URL" },
-  { value: "emoji", label: "Emoji" },
-  { value: "text", label: "Text / Letter" },
+  { value: "text", label: "Letter / Emoji" },
 ];
 
 const CAPTION_POSITIONS: { value: CaptionPosition; label: string }[] = [
@@ -285,7 +284,6 @@ interface PersistedSettings {
   logoMode: LogoMode;
   logoImageDataUrl: string | null;
   logoImageUrl: string;
-  logoEmoji: string;
   logoText: string;
   logoColor: string;
   logoSizePercent: string;
@@ -323,10 +321,9 @@ const DEFAULT_SETTINGS: PersistedSettings = {
   logoMode: "none",
   logoImageDataUrl: null,
   logoImageUrl: "",
-  logoEmoji: "",
   logoText: "",
   logoColor: "#000000",
-  logoSizePercent: "40",
+  logoSizePercent: "10",
   captionPosition: "none",
   captionText: EXAMPLE_INPUT,
   captionFontSize: "16",
@@ -409,7 +406,6 @@ export default function QrCodeMaker() {
   const [logoImageUrl, setLogoImageUrl] = useState<string>(
     initialSettings.logoImageUrl,
   );
-  const [logoEmoji, setLogoEmoji] = useState<string>(initialSettings.logoEmoji);
   const [logoText, setLogoText] = useState<string>(initialSettings.logoText);
   const [logoColor, setLogoColor] = useState<string>(initialSettings.logoColor);
   const [logoSizePercent, setLogoSizePercent] = useState<string>(
@@ -463,7 +459,6 @@ export default function QrCodeMaker() {
       logoMode,
       logoImageDataUrl,
       logoImageUrl,
-      logoEmoji,
       logoText,
       logoColor,
       logoSizePercent,
@@ -505,7 +500,6 @@ export default function QrCodeMaker() {
     logoMode,
     logoImageDataUrl,
     logoImageUrl,
-    logoEmoji,
     logoText,
     logoColor,
     logoSizePercent,
@@ -529,7 +523,6 @@ export default function QrCodeMaker() {
     setLogoMode(DEFAULT_SETTINGS.logoMode);
     setLogoImageDataUrl(DEFAULT_SETTINGS.logoImageDataUrl);
     setLogoImageUrl(DEFAULT_SETTINGS.logoImageUrl);
-    setLogoEmoji(DEFAULT_SETTINGS.logoEmoji);
     setLogoText(DEFAULT_SETTINGS.logoText);
     setLogoColor(DEFAULT_SETTINGS.logoColor);
     setLogoSizePercent(DEFAULT_SETTINGS.logoSizePercent);
@@ -606,10 +599,6 @@ export default function QrCodeMaker() {
         return logoImageDataUrl ?? undefined;
       case "url":
         return logoImageUrl.trim() || undefined;
-      case "emoji":
-        return logoEmoji.trim()
-          ? renderGlyphToDataUrl(logoEmoji.trim(), fgColor)
-          : undefined;
       case "text":
         return logoText.trim()
           ? renderGlyphToDataUrl(logoText.trim(), logoColor)
@@ -621,10 +610,8 @@ export default function QrCodeMaker() {
     logoMode,
     logoImageDataUrl,
     logoImageUrl,
-    logoEmoji,
     logoText,
     logoColor,
-    fgColor,
   ]);
 
   // Build the qr-code-styling options from current state
@@ -1295,21 +1282,12 @@ export default function QrCodeMaker() {
                 />
               )}
 
-              {logoMode === "emoji" && (
-                <Input
-                  value={logoEmoji}
-                  onChange={(e) => setLogoEmoji(e.target.value)}
-                  placeholder="🚀"
-                  className="h-9 text-xs"
-                />
-              )}
-
               {logoMode === "text" && (
                 <div className="flex gap-2">
                   <Input
                     value={logoText}
                     onChange={(e) => setLogoText(e.target.value)}
-                    placeholder="AB"
+                    placeholder="A / 😀"
                     maxLength={3}
                     className="h-9 text-xs flex-1"
                   />

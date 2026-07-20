@@ -8,6 +8,7 @@ import qrcodeGenerator from "qrcode-generator";
 import { toPng, toSvg } from "html-to-image";
 import {
   Check,
+  ChevronDown,
   Copy,
   Image as ImageIcon,
   FileCode,
@@ -20,7 +21,18 @@ import {
 
 // Shadcn UI Imports
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -44,6 +56,10 @@ type CornerStyle =
   | "dots"
   | "classy"
   | "classy-rounded";
+
+type ContentType = "link" | "vcard" | "wifi" | "email" | "phone";
+
+type WifiEncryption = "WPA" | "WEP" | "nopass";
 
 type LogoMode = "none" | "upload" | "url" | "emoji" | "text";
 
@@ -80,6 +96,20 @@ const ERROR_LEVELS: { value: ErrorCorrectionLevel; label: string }[] = [
   { value: "H", label: "High (30%)" },
 ];
 
+const CONTENT_TYPES: { value: ContentType; label: string }[] = [
+  { value: "link", label: "Link / Text" },
+  { value: "vcard", label: "Contact (vCard)" },
+  { value: "wifi", label: "WiFi Network" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone Number" },
+];
+
+const WIFI_ENCRYPTIONS: { value: WifiEncryption; label: string }[] = [
+  { value: "WPA", label: "WPA/WPA2" },
+  { value: "WEP", label: "WEP" },
+  { value: "nopass", label: "None (Open)" },
+];
+
 const LOGO_MODES: { value: LogoMode; label: string }[] = [
   { value: "none", label: "None" },
   { value: "upload", label: "Uploaded Image" },
@@ -94,7 +124,11 @@ const CAPTION_POSITIONS: { value: CaptionPosition; label: string }[] = [
   { value: "bottom", label: "Below" },
 ];
 
-const CAPTION_FONTS: { value: CaptionFont; label: string; className: string }[] = [
+const CAPTION_FONTS: {
+  value: CaptionFont;
+  label: string;
+  className: string;
+}[] = [
   { value: "sans", label: "Sans", className: "font-sans" },
   { value: "serif", label: "Serif", className: "font-serif" },
   { value: "mono", label: "Mono", className: "font-mono" },
@@ -105,6 +139,70 @@ function formatStyleLabel(value: string) {
     .split("-")
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+// The WIFI: URI spec requires backslash-escaping any literal \\, ;, , or :
+// inside a field, since those characters are the format's own delimiters.
+function escapeWifiField(value: string): string {
+  return value.replace(/([\\;,:])/g, "\\$1");
+}
+
+function buildVCardPayload({
+  name,
+  phone,
+  email,
+  org,
+}: {
+  name: string;
+  phone: string;
+  email: string;
+  org: string;
+}): string {
+  const lines = ["BEGIN:VCARD", "VERSION:3.0"];
+  const trimmedName = name.trim();
+  if (trimmedName) {
+    const [first, ...rest] = trimmedName.split(" ");
+    lines.push(`N:${rest.join(" ")};${first};;;`, `FN:${trimmedName}`);
+  }
+  if (org.trim()) lines.push(`ORG:${org.trim()}`);
+  if (phone.trim()) lines.push(`TEL:${phone.trim()}`);
+  if (email.trim()) lines.push(`EMAIL:${email.trim()}`);
+  lines.push("END:VCARD");
+  return lines.join("\n");
+}
+
+function buildWifiPayload({
+  ssid,
+  password,
+  encryption,
+  hidden,
+}: {
+  ssid: string;
+  password: string;
+  encryption: WifiEncryption;
+  hidden: boolean;
+}): string {
+  const parts = [`WIFI:T:${encryption}`, `S:${escapeWifiField(ssid.trim())}`];
+  if (encryption !== "nopass")
+    parts.push(`P:${escapeWifiField(password.trim())}`);
+  parts.push(`H:${hidden ? "true" : "false"}`);
+  return `${parts.join(";")};;`;
+}
+
+function buildEmailPayload({
+  address,
+  subject,
+  body,
+}: {
+  address: string;
+  subject: string;
+  body: string;
+}): string {
+  const params: string[] = [];
+  if (subject.trim())
+    params.push(`subject=${encodeURIComponent(subject.trim())}`);
+  if (body.trim()) params.push(`body=${encodeURIComponent(body.trim())}`);
+  return `mailto:${address.trim()}${params.length ? `?${params.join("&")}` : ""}`;
 }
 
 // Renders a short piece of text or a single emoji onto a transparent square
@@ -163,6 +261,19 @@ const STORAGE_KEY = "qr-code-maker:settings";
 
 interface PersistedSettings {
   input: string;
+  contentType: ContentType;
+  vcardName: string;
+  vcardPhone: string;
+  vcardEmail: string;
+  vcardOrg: string;
+  wifiSsid: string;
+  wifiPassword: string;
+  wifiEncryption: WifiEncryption;
+  wifiHidden: boolean;
+  emailAddress: string;
+  emailSubject: string;
+  emailBody: string;
+  phoneNumber: string;
   fgColor: string;
   bgColor: string;
   transparentBg: boolean;
@@ -188,6 +299,19 @@ interface PersistedSettings {
 
 const DEFAULT_SETTINGS: PersistedSettings = {
   input: EXAMPLE_INPUT,
+  contentType: "link",
+  vcardName: "",
+  vcardPhone: "",
+  vcardEmail: "",
+  vcardOrg: "",
+  wifiSsid: "",
+  wifiPassword: "",
+  wifiEncryption: "WPA",
+  wifiHidden: false,
+  emailAddress: "",
+  emailSubject: "",
+  emailBody: "",
+  phoneNumber: "",
   fgColor: "#000000",
   bgColor: "#ffffff",
   transparentBg: false,
@@ -227,6 +351,43 @@ export default function QrCodeMaker() {
   const [input, setInput] = useState<string>(initialSettings.input);
   const [copiedImg, setCopiedImg] = useState<boolean>(false);
 
+  const [contentType, setContentType] = useState<ContentType>(
+    initialSettings.contentType,
+  );
+  const [vcardName, setVcardName] = useState<string>(initialSettings.vcardName);
+  const [vcardPhone, setVcardPhone] = useState<string>(
+    initialSettings.vcardPhone,
+  );
+  const [vcardEmail, setVcardEmail] = useState<string>(
+    initialSettings.vcardEmail,
+  );
+  const [vcardOrg, setVcardOrg] = useState<string>(initialSettings.vcardOrg);
+  const [wifiSsid, setWifiSsid] = useState<string>(initialSettings.wifiSsid);
+  const [wifiPassword, setWifiPassword] = useState<string>(
+    initialSettings.wifiPassword,
+  );
+  const [wifiEncryption, setWifiEncryption] = useState<WifiEncryption>(
+    initialSettings.wifiEncryption,
+  );
+  const [wifiHidden, setWifiHidden] = useState<boolean>(
+    initialSettings.wifiHidden,
+  );
+  const [emailAddress, setEmailAddress] = useState<string>(
+    initialSettings.emailAddress,
+  );
+  const [emailSubject, setEmailSubject] = useState<string>(
+    initialSettings.emailSubject,
+  );
+  const [emailBody, setEmailBody] = useState<string>(initialSettings.emailBody);
+  const [phoneNumber, setPhoneNumber] = useState<string>(
+    initialSettings.phoneNumber,
+  );
+
+  // Both collapsibles start open; the accordion behavior (below) only kicks
+  // in once one of them is collapsed.
+  const [contentOpen, setContentOpen] = useState(true);
+  const [optionsOpen, setOptionsOpen] = useState(true);
+
   const [fgColor, setFgColor] = useState<string>(initialSettings.fgColor);
   const [bgColor, setBgColor] = useState<string>(initialSettings.bgColor);
   const [transparentBg, setTransparentBg] = useState<boolean>(
@@ -258,7 +419,9 @@ export default function QrCodeMaker() {
   const [captionPosition, setCaptionPosition] = useState<CaptionPosition>(
     initialSettings.captionPosition,
   );
-  const [captionText, setCaptionText] = useState<string>(initialSettings.captionText);
+  const [captionText, setCaptionText] = useState<string>(
+    initialSettings.captionText,
+  );
   const [captionFontSize, setCaptionFontSize] = useState<string>(
     initialSettings.captionFontSize,
   );
@@ -268,12 +431,27 @@ export default function QrCodeMaker() {
   const [captionFont, setCaptionFont] = useState<CaptionFont>(
     initialSettings.captionFont,
   );
-  const [captionGap, setCaptionGap] = useState<string>(initialSettings.captionGap);
+  const [captionGap, setCaptionGap] = useState<string>(
+    initialSettings.captionGap,
+  );
 
   // Persist the content and its styling whenever either changes
   useEffect(() => {
     const settings: PersistedSettings = {
       input,
+      contentType,
+      vcardName,
+      vcardPhone,
+      vcardEmail,
+      vcardOrg,
+      wifiSsid,
+      wifiPassword,
+      wifiEncryption,
+      wifiHidden,
+      emailAddress,
+      emailSubject,
+      emailBody,
+      phoneNumber,
       fgColor,
       bgColor,
       transparentBg,
@@ -303,6 +481,19 @@ export default function QrCodeMaker() {
     }
   }, [
     input,
+    contentType,
+    vcardName,
+    vcardPhone,
+    vcardEmail,
+    vcardOrg,
+    wifiSsid,
+    wifiPassword,
+    wifiEncryption,
+    wifiHidden,
+    emailAddress,
+    emailSubject,
+    emailBody,
+    phoneNumber,
     fgColor,
     bgColor,
     transparentBg,
@@ -350,6 +541,62 @@ export default function QrCodeMaker() {
     setCaptionGap(DEFAULT_SETTINGS.captionGap);
   };
 
+  // Resolve whichever content type is active into the literal string the QR
+  // code encodes — a raw URL/text, or a structured payload (vCard, WIFI:,
+  // mailto:, tel:) built from that type's own fields.
+  const qrData = useMemo(() => {
+    switch (contentType) {
+      case "vcard":
+        return vcardName.trim() ||
+          vcardPhone.trim() ||
+          vcardEmail.trim() ||
+          vcardOrg.trim()
+          ? buildVCardPayload({
+              name: vcardName,
+              phone: vcardPhone,
+              email: vcardEmail,
+              org: vcardOrg,
+            })
+          : EXAMPLE_INPUT;
+      case "wifi":
+        return wifiSsid.trim()
+          ? buildWifiPayload({
+              ssid: wifiSsid,
+              password: wifiPassword,
+              encryption: wifiEncryption,
+              hidden: wifiHidden,
+            })
+          : EXAMPLE_INPUT;
+      case "email":
+        return emailAddress.trim()
+          ? buildEmailPayload({
+              address: emailAddress,
+              subject: emailSubject,
+              body: emailBody,
+            })
+          : EXAMPLE_INPUT;
+      case "phone":
+        return phoneNumber.trim() ? `tel:${phoneNumber.trim()}` : EXAMPLE_INPUT;
+      default:
+        return input.trim() ? input : EXAMPLE_INPUT;
+    }
+  }, [
+    contentType,
+    input,
+    vcardName,
+    vcardPhone,
+    vcardEmail,
+    vcardOrg,
+    wifiSsid,
+    wifiPassword,
+    wifiEncryption,
+    wifiHidden,
+    emailAddress,
+    emailSubject,
+    emailBody,
+    phoneNumber,
+  ]);
+
   // Resolve whichever center-content mode is active into an image source
   // qr-code-styling can embed, same shape whether it's a file, a URL, or
   // text/emoji rendered onto a canvas.
@@ -370,7 +617,15 @@ export default function QrCodeMaker() {
       default:
         return undefined;
     }
-  }, [logoMode, logoImageDataUrl, logoImageUrl, logoEmoji, logoText, logoColor, fgColor]);
+  }, [
+    logoMode,
+    logoImageDataUrl,
+    logoImageUrl,
+    logoEmoji,
+    logoText,
+    logoColor,
+    fgColor,
+  ]);
 
   // Build the qr-code-styling options from current state
   const options: Partial<Options> = useMemo(() => {
@@ -379,7 +634,7 @@ export default function QrCodeMaker() {
       width: px,
       height: px,
       type: "canvas",
-      data: input.trim() ? input : EXAMPLE_INPUT,
+      data: qrData,
       margin: Number(margin) || 0,
       image: logoImage,
       qrOptions: { errorCorrectionLevel },
@@ -395,7 +650,7 @@ export default function QrCodeMaker() {
       },
     };
   }, [
-    input,
+    qrData,
     size,
     margin,
     logoImage,
@@ -408,20 +663,20 @@ export default function QrCodeMaker() {
     transparentBg,
   ]);
 
-  // Derive a human-readable capacity error, purely from input — no DOM involved.
-  // Mirrors what qr-code-styling's own encoder would throw, using the same
-  // underlying qrcode-generator lib it depends on.
+  // Derive a human-readable capacity error, purely from the encoded data —
+  // no DOM involved. Mirrors what qr-code-styling's own encoder would throw,
+  // using the same underlying qrcode-generator lib it depends on.
   const renderError = useMemo(() => {
     try {
       const qr = qrcodeGenerator(0, errorCorrectionLevel);
-      qr.addData(input.trim() ? input : EXAMPLE_INPUT);
+      qr.addData(qrData);
       qr.make();
       return null;
     } catch (err) {
       if (typeof err === "string") return err;
       return err instanceof Error ? err.message : "Could not generate QR code";
     }
-  }, [input, errorCorrectionLevel]);
+  }, [qrData, errorCorrectionLevel]);
 
   const previewRef = useRef<HTMLDivElement>(null);
   const compositeRef = useRef<HTMLDivElement>(null);
@@ -457,7 +712,10 @@ export default function QrCodeMaker() {
   };
 
   const timestampedFilename = () => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, -5);
     return `qr-code-${timestamp}`;
   };
 
@@ -537,7 +795,9 @@ export default function QrCodeMaker() {
         blob = await res.blob();
       }
       if (!blob) return;
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob }),
+      ]);
       setCopiedImg(true);
       setTimeout(() => setCopiedImg(false), 2000);
     } catch (error) {
@@ -551,7 +811,7 @@ export default function QrCodeMaker() {
       <Card className="flex flex-col overflow-hidden h-full gap-0 py-0">
         <CardHeader className="py-3 px-4 border-b bg-muted/20">
           <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            QR Content
+            Configure
           </CardTitle>
           <CardAction>
             <Button
@@ -566,411 +826,698 @@ export default function QrCodeMaker() {
           </CardAction>
         </CardHeader>
 
-        {/* Content */}
-        <div className="p-4 bg-background">
-          <Label htmlFor="qr-content" className="mb-2 block">
-            Content
-          </Label>
-          <Input
-            id="qr-content"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="URL, text, wifi details, vCard..."
-            className="font-mono text-xs h-9"
-          />
-        </div>
-
-        <Separator />
-
-        {/* Configurations Lower Section */}
-        <CardContent className="p-4 flex-1 flex flex-col gap-4 bg-muted/5 min-h-0 overflow-y-auto">
-          {/* Colors */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-end gap-2 h-9">
-              <input
-                id="transparent-bg"
-                type="checkbox"
-                checked={transparentBg}
-                onChange={(e) => setTransparentBg(e.target.checked)}
-                className="h-4 w-4 rounded border cursor-pointer accent-foreground"
-              />
-              <Label
-                htmlFor="transparent-bg"
-                className="cursor-pointer font-normal whitespace-nowrap"
-              >
-                Transparent BG
-              </Label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label htmlFor="fg-color">Foreground</Label>
-                <ColorSwatchInput id="fg-color" value={fgColor} onChange={setFgColor} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bg-color">Background</Label>
-                <ColorSwatchInput
-                  id="bg-color"
-                  value={bgColor}
-                  disabled={transparentBg}
-                  onChange={setBgColor}
-                />
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Style */}
-          <div className="grid grid-cols-2 gap-2">
+        {/* Content — the section that only grows to fill leftover space when
+            Options is collapsed; otherwise it just takes its natural height,
+            since its fields are always a handful of short inputs. */}
+        <Collapsible
+          open={contentOpen}
+          onOpenChange={setContentOpen}
+          className={cn(
+            "flex flex-col min-h-0 border-b",
+            contentOpen && !optionsOpen ? "flex-1" : "shrink-0",
+          )}
+        >
+          <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 bg-background hover:bg-muted/40 transition-colors">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Content
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                contentOpen && "rotate-180",
+              )}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 space-y-3 bg-background">
             <div className="space-y-2">
-              <Label>Dot Style</Label>
-              <Select value={dotsType} onValueChange={(v) => setDotsType(v as DotType)}>
-                <SelectTrigger className="bg-background w-full">
-                  <SelectValue placeholder="Dot style">
-                    {(value: DotType) => formatStyleLabel(value)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {DOT_STYLES.map((style) => (
-                    <SelectItem key={style} value={style}>
-                      {formatStyleLabel(style)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Corner Style</Label>
+              <Label>Content Type</Label>
               <Select
-                value={cornerType}
-                onValueChange={(v) => setCornerType(v as CornerStyle)}
+                value={contentType}
+                onValueChange={(v) => setContentType(v as ContentType)}
               >
                 <SelectTrigger className="bg-background w-full">
-                  <SelectValue placeholder="Corner style">
-                    {(value: CornerStyle) => formatStyleLabel(value)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {CORNER_STYLES.map((style) => (
-                    <SelectItem key={style} value={style}>
-                      {formatStyleLabel(style)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Size, Spacing & Error Correction */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="space-y-2">
-              <Label htmlFor="size">Size (px)</Label>
-              <Input
-                id="size"
-                type="number"
-                min={128}
-                max={2000}
-                step={50}
-                value={size}
-                onChange={(e) => setSize(e.target.value)}
-                className="h-9"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="margin">Quiet Zone (px)</Label>
-              <Input
-                id="margin"
-                type="number"
-                min={0}
-                max={200}
-                step={4}
-                value={margin}
-                onChange={(e) => setMargin(e.target.value)}
-                className="h-9"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Error Correction</Label>
-              <Select
-                value={errorCorrectionLevel}
-                onValueChange={(v) => setErrorCorrectionLevel(v as ErrorCorrectionLevel)}
-              >
-                <SelectTrigger className="bg-background w-full">
-                  <SelectValue placeholder="Level">
-                    {(value: ErrorCorrectionLevel) =>
-                      ERROR_LEVELS.find((level) => level.value === value)?.label ?? value
+                  <SelectValue placeholder="Content type">
+                    {(value: ContentType) =>
+                      CONTENT_TYPES.find((type) => type.value === value)
+                        ?.label ?? value
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {ERROR_LEVELS.map((level) => (
-                    <SelectItem key={level.value} value={level.value}>
-                      {level.label}
+                  {CONTENT_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
 
-          <Separator />
+            {contentType === "link" && (
+              <div className="space-y-2">
+                <Label htmlFor="qr-content">Link / Text</Label>
+                <Input
+                  id="qr-content"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="https://example.com"
+                  className="font-mono text-xs h-9"
+                />
+              </div>
+            )}
 
-          {/* Center Content */}
-          <div className="space-y-2">
-            <Label>Center Content</Label>
-            <Select value={logoMode} onValueChange={(v) => setLogoMode(v as LogoMode)}>
-              <SelectTrigger className="bg-background w-full">
-                <SelectValue placeholder="Center content">
-                  {(value: LogoMode) =>
-                    LOGO_MODES.find((mode) => mode.value === value)?.label ?? value
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {LOGO_MODES.map((mode) => (
-                  <SelectItem key={mode.value} value={mode.value}>
-                    {mode.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {logoMode === "upload" &&
-              (logoImageDataUrl ? (
-                <div className="flex items-center gap-2 border rounded-md px-2 h-9 bg-background">
-                  <img
-                    src={logoImageDataUrl}
-                    alt="Logo preview"
-                    className="h-5 w-5 object-contain shrink-0"
+            {contentType === "vcard" && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="vcard-name">Full Name</Label>
+                  <Input
+                    id="vcard-name"
+                    value={vcardName}
+                    onChange={(e) => setVcardName(e.target.value)}
+                    placeholder="Jane Doe"
+                    className="h-9 text-xs"
                   />
-                  <span className="text-xs text-muted-foreground">Image attached</span>
-                  <button
-                    type="button"
-                    onClick={() => setLogoImageDataUrl(null)}
-                    className="ml-auto text-muted-foreground hover:text-foreground"
-                    aria-label="Remove image"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
                 </div>
-              ) : (
-                <label className="flex items-center gap-1.5 border rounded-md px-3 h-9 text-xs cursor-pointer bg-background hover:bg-muted/50 transition-colors w-fit">
-                  <ImagePlus className="h-3.5 w-3.5" />
-                  Upload Image
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="hidden"
+                <div className="space-y-2">
+                  <Label htmlFor="vcard-phone">Phone</Label>
+                  <Input
+                    id="vcard-phone"
+                    type="tel"
+                    value={vcardPhone}
+                    onChange={(e) => setVcardPhone(e.target.value)}
+                    placeholder="+1 555 0100"
+                    className="h-9 text-xs"
                   />
-                </label>
-              ))}
-
-            {logoMode === "url" && (
-              <Input
-                value={logoImageUrl}
-                onChange={(e) => setLogoImageUrl(e.target.value)}
-                placeholder="https://example.com/logo.png"
-                className="h-9 text-xs"
-              />
-            )}
-
-            {logoMode === "emoji" && (
-              <Input
-                value={logoEmoji}
-                onChange={(e) => setLogoEmoji(e.target.value)}
-                placeholder="🚀"
-                className="h-9 text-xs"
-              />
-            )}
-
-            {logoMode === "text" && (
-              <div className="flex gap-2">
-                <Input
-                  value={logoText}
-                  onChange={(e) => setLogoText(e.target.value)}
-                  placeholder="AB"
-                  maxLength={3}
-                  className="h-9 text-xs flex-1"
-                />
-                <ColorSwatchInput id="logo-color" value={logoColor} onChange={setLogoColor} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vcard-email">Email</Label>
+                  <Input
+                    id="vcard-email"
+                    type="email"
+                    value={vcardEmail}
+                    onChange={(e) => setVcardEmail(e.target.value)}
+                    placeholder="jane@example.com"
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="vcard-org">Organization</Label>
+                  <Input
+                    id="vcard-org"
+                    value={vcardOrg}
+                    onChange={(e) => setVcardOrg(e.target.value)}
+                    placeholder="Acme Inc."
+                    className="h-9 text-xs"
+                  />
+                </div>
               </div>
             )}
 
-            {logoMode !== "none" && (
-              <div className="space-y-2 pt-1">
-                <Label htmlFor="logo-size">Logo Size (%)</Label>
-                <Input
-                  id="logo-size"
-                  type="number"
-                  min={10}
-                  max={50}
-                  step={5}
-                  value={logoSizePercent}
-                  onChange={(e) => setLogoSizePercent(e.target.value)}
-                  className="h-9"
-                />
+            {contentType === "wifi" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="wifi-ssid">Network Name</Label>
+                    <Input
+                      id="wifi-ssid"
+                      value={wifiSsid}
+                      onChange={(e) => setWifiSsid(e.target.value)}
+                      placeholder="MyWiFi"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Security</Label>
+                    <Select
+                      value={wifiEncryption}
+                      onValueChange={(v) =>
+                        setWifiEncryption(v as WifiEncryption)
+                      }
+                    >
+                      <SelectTrigger className="bg-background w-full">
+                        <SelectValue placeholder="Security">
+                          {(value: WifiEncryption) =>
+                            WIFI_ENCRYPTIONS.find((e) => e.value === value)
+                              ?.label ?? value
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WIFI_ENCRYPTIONS.map((e) => (
+                          <SelectItem key={e.value} value={e.value}>
+                            {e.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {wifiEncryption !== "nopass" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="wifi-password">Password</Label>
+                    <Input
+                      id="wifi-password"
+                      value={wifiPassword}
+                      onChange={(e) => setWifiPassword(e.target.value)}
+                      placeholder="Password"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 h-9">
+                  <input
+                    id="wifi-hidden"
+                    type="checkbox"
+                    checked={wifiHidden}
+                    onChange={(e) => setWifiHidden(e.target.checked)}
+                    className="h-4 w-4 rounded border cursor-pointer accent-foreground"
+                  />
+                  <Label
+                    htmlFor="wifi-hidden"
+                    className="cursor-pointer font-normal"
+                  >
+                    Hidden network
+                  </Label>
+                </div>
               </div>
             )}
 
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Use Quartile or High error correction so the code still scans.
-            </p>
-          </div>
+            {contentType === "email" && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="email-address">To</Label>
+                  <Input
+                    id="email-address"
+                    type="email"
+                    value={emailAddress}
+                    onChange={(e) => setEmailAddress(e.target.value)}
+                    placeholder="jane@example.com"
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="email-subject">Subject</Label>
+                    <Input
+                      id="email-subject"
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                      placeholder="Subject"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email-body">Body</Label>
+                    <Input
+                      id="email-body"
+                      value={emailBody}
+                      onChange={(e) => setEmailBody(e.target.value)}
+                      placeholder="Message"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
-          <Separator />
+            {contentType === "phone" && (
+              <div className="space-y-2">
+                <Label htmlFor="phone-number">Phone Number</Label>
+                <Input
+                  id="phone-number"
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+1 555 0100"
+                  className="h-9 text-xs"
+                />
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
 
-          {/* Caption */}
-          <div className="space-y-2">
-            <Label>Link Caption</Label>
-            <Select
-              value={captionPosition}
-              onValueChange={(v) => setCaptionPosition(v as CaptionPosition)}
-            >
-              <SelectTrigger className="bg-background w-full">
-                <SelectValue placeholder="Position">
-                  {(value: CaptionPosition) =>
-                    CAPTION_POSITIONS.find((position) => position.value === value)?.label ??
-                    value
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {CAPTION_POSITIONS.map((position) => (
-                  <SelectItem key={position.value} value={position.value}>
-                    {position.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between">
+        {/* Options — the section with the most fields, so it's the one that
+            absorbs whatever vertical space Content doesn't need, and scrolls
+            internally once it does. */}
+        <Collapsible
+          open={optionsOpen}
+          onOpenChange={setOptionsOpen}
+          className={cn(
+            "flex flex-col min-h-0",
+            optionsOpen ? "flex-1" : "shrink-0",
+          )}
+        >
+          <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors border-b">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Options
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                optionsOpen && "rotate-180",
+              )}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-4 bg-muted/5">
+            {/* Colors */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-end gap-2 h-9">
+                <input
+                  id="transparent-bg"
+                  type="checkbox"
+                  checked={transparentBg}
+                  onChange={(e) => setTransparentBg(e.target.checked)}
+                  className="h-4 w-4 rounded border cursor-pointer accent-foreground"
+                />
                 <Label
-                  htmlFor="caption-text"
-                  className={captionPosition === "none" ? "text-muted-foreground" : undefined}
+                  htmlFor="transparent-bg"
+                  className="cursor-pointer font-normal whitespace-nowrap"
                 >
-                  Caption Text
+                  Transparent BG
                 </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-                  disabled={captionPosition === "none"}
-                  onClick={() => setCaptionText(input)}
-                >
-                  <Copy className="h-3 w-3" />
-                  Use Content
-                </Button>
               </div>
-              <Input
-                id="caption-text"
-                value={captionText}
-                disabled={captionPosition === "none"}
-                onChange={(e) => setCaptionText(e.target.value)}
-                placeholder="Scan to visit..."
-                className="h-9 text-xs"
-              />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="fg-color">Foreground</Label>
+                  <ColorSwatchInput
+                    id="fg-color"
+                    value={fgColor}
+                    onChange={setFgColor}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bg-color">Background</Label>
+                  <ColorSwatchInput
+                    id="bg-color"
+                    value={bgColor}
+                    disabled={transparentBg}
+                    onChange={setBgColor}
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="caption-size"
-                  className={captionPosition === "none" ? "text-muted-foreground" : undefined}
-                >
-                  Caption Size (px)
-                </Label>
-                <Input
-                  id="caption-size"
-                  type="number"
-                  min={8}
-                  max={64}
-                  step={2}
-                  value={captionFontSize}
-                  disabled={captionPosition === "none"}
-                  onChange={(e) => setCaptionFontSize(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="caption-gap"
-                  className={captionPosition === "none" ? "text-muted-foreground" : undefined}
-                >
-                  Gap (px)
-                </Label>
-                <Input
-                  id="caption-gap"
-                  type="number"
-                  min={-500}
-                  max={500}
-                  step={4}
-                  value={captionGap}
-                  disabled={captionPosition === "none"}
-                  onChange={(e) => setCaptionGap(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-            </div>
+            <Separator />
 
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            {/* Style */}
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2">
-                <Label
-                  className={captionPosition === "none" ? "text-muted-foreground" : undefined}
-                >
-                  Caption Font
-                </Label>
+                <Label>Dot Style</Label>
                 <Select
-                  value={captionFont}
-                  onValueChange={(v) => setCaptionFont(v as CaptionFont)}
-                  disabled={captionPosition === "none"}
+                  value={dotsType}
+                  onValueChange={(v) => setDotsType(v as DotType)}
                 >
                   <SelectTrigger className="bg-background w-full">
-                    <SelectValue placeholder="Font">
-                      {(value: CaptionFont) =>
-                        CAPTION_FONTS.find((font) => font.value === value)?.label ?? value
-                      }
+                    <SelectValue placeholder="Dot style">
+                      {(value: DotType) => formatStyleLabel(value)}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {CAPTION_FONTS.map((font) => (
-                      <SelectItem key={font.value} value={font.value}>
-                        {font.label}
+                    {DOT_STYLES.map((style) => (
+                      <SelectItem key={style} value={style}>
+                        {formatStyleLabel(style)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
-                <Label
-                  htmlFor="caption-color"
-                  className={captionPosition === "none" ? "text-muted-foreground" : undefined}
+                <Label>Corner Style</Label>
+                <Select
+                  value={cornerType}
+                  onValueChange={(v) => setCornerType(v as CornerStyle)}
                 >
-                  Caption Color
-                </Label>
-                <ColorSwatchInput
-                  id="caption-color"
-                  value={captionColor}
-                  disabled={captionPosition === "none"}
-                  onChange={setCaptionColor}
-                />
+                  <SelectTrigger className="bg-background w-full">
+                    <SelectValue placeholder="Corner style">
+                      {(value: CornerStyle) => formatStyleLabel(value)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CORNER_STYLES.map((style) => (
+                      <SelectItem key={style} value={style}>
+                        {formatStyleLabel(style)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Gap: inward from the QR edge. Negative pushes the caption outside.
-            </p>
-          </div>
-        </CardContent>
+            <Separator />
+
+            {/* Size, Spacing & Error Correction */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="size">Size (px)</Label>
+                <Input
+                  id="size"
+                  type="number"
+                  min={128}
+                  max={2000}
+                  step={50}
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="margin">Quiet Zone (px)</Label>
+                <Input
+                  id="margin"
+                  type="number"
+                  min={0}
+                  max={200}
+                  step={4}
+                  value={margin}
+                  onChange={(e) => setMargin(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Error Correction</Label>
+                <Select
+                  value={errorCorrectionLevel}
+                  onValueChange={(v) =>
+                    setErrorCorrectionLevel(v as ErrorCorrectionLevel)
+                  }
+                >
+                  <SelectTrigger className="bg-background w-full">
+                    <SelectValue placeholder="Level">
+                      {(value: ErrorCorrectionLevel) =>
+                        ERROR_LEVELS.find((level) => level.value === value)
+                          ?.label ?? value
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ERROR_LEVELS.map((level) => (
+                      <SelectItem key={level.value} value={level.value}>
+                        {level.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Center Content */}
+            <div className="space-y-2">
+              <Label>Center Content</Label>
+              <Select
+                value={logoMode}
+                onValueChange={(v) => setLogoMode(v as LogoMode)}
+              >
+                <SelectTrigger className="bg-background w-full">
+                  <SelectValue placeholder="Center content">
+                    {(value: LogoMode) =>
+                      LOGO_MODES.find((mode) => mode.value === value)?.label ??
+                      value
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {LOGO_MODES.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {logoMode === "upload" &&
+                (logoImageDataUrl ? (
+                  <div className="flex items-center gap-2 border rounded-md px-2 h-9 bg-background">
+                    <img
+                      src={logoImageDataUrl}
+                      alt="Logo preview"
+                      className="h-5 w-5 object-contain shrink-0"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Image attached
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLogoImageDataUrl(null)}
+                      className="ml-auto text-muted-foreground hover:text-foreground"
+                      aria-label="Remove image"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-1.5 border rounded-md px-3 h-9 text-xs cursor-pointer bg-background hover:bg-muted/50 transition-colors w-fit">
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    Upload Image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                ))}
+
+              {logoMode === "url" && (
+                <Input
+                  value={logoImageUrl}
+                  onChange={(e) => setLogoImageUrl(e.target.value)}
+                  placeholder="https://example.com/logo.png"
+                  className="h-9 text-xs"
+                />
+              )}
+
+              {logoMode === "emoji" && (
+                <Input
+                  value={logoEmoji}
+                  onChange={(e) => setLogoEmoji(e.target.value)}
+                  placeholder="🚀"
+                  className="h-9 text-xs"
+                />
+              )}
+
+              {logoMode === "text" && (
+                <div className="flex gap-2">
+                  <Input
+                    value={logoText}
+                    onChange={(e) => setLogoText(e.target.value)}
+                    placeholder="AB"
+                    maxLength={3}
+                    className="h-9 text-xs flex-1"
+                  />
+                  <ColorSwatchInput
+                    id="logo-color"
+                    value={logoColor}
+                    onChange={setLogoColor}
+                  />
+                </div>
+              )}
+
+              {logoMode !== "none" && (
+                <div className="space-y-2 pt-1">
+                  <Label htmlFor="logo-size">Logo Size (%)</Label>
+                  <Input
+                    id="logo-size"
+                    type="number"
+                    min={10}
+                    max={50}
+                    step={5}
+                    value={logoSizePercent}
+                    onChange={(e) => setLogoSizePercent(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              )}
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Use Quartile or High error correction so the code still scans.
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Caption */}
+            <div className="space-y-2">
+              <Label>Link Caption</Label>
+              <Select
+                value={captionPosition}
+                onValueChange={(v) => setCaptionPosition(v as CaptionPosition)}
+              >
+                <SelectTrigger className="bg-background w-full">
+                  <SelectValue placeholder="Position">
+                    {(value: CaptionPosition) =>
+                      CAPTION_POSITIONS.find(
+                        (position) => position.value === value,
+                      )?.label ?? value
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {CAPTION_POSITIONS.map((position) => (
+                    <SelectItem key={position.value} value={position.value}>
+                      {position.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="caption-text"
+                    className={
+                      captionPosition === "none"
+                        ? "text-muted-foreground"
+                        : undefined
+                    }
+                  >
+                    Caption Text
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+                    disabled={
+                      captionPosition === "none" ||
+                      contentType === "vcard" ||
+                      contentType === "wifi"
+                    }
+                    onClick={() => setCaptionText(qrData)}
+                  >
+                    <Copy className="h-3 w-3" />
+                    Use Content
+                  </Button>
+                </div>
+                <Input
+                  id="caption-text"
+                  value={captionText}
+                  disabled={captionPosition === "none"}
+                  onChange={(e) => setCaptionText(e.target.value)}
+                  placeholder="Scan to visit..."
+                  className="h-9 text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="caption-size"
+                    className={
+                      captionPosition === "none"
+                        ? "text-muted-foreground"
+                        : undefined
+                    }
+                  >
+                    Caption Size (px)
+                  </Label>
+                  <Input
+                    id="caption-size"
+                    type="number"
+                    min={8}
+                    max={64}
+                    step={2}
+                    value={captionFontSize}
+                    disabled={captionPosition === "none"}
+                    onChange={(e) => setCaptionFontSize(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="caption-gap"
+                    className={
+                      captionPosition === "none"
+                        ? "text-muted-foreground"
+                        : undefined
+                    }
+                  >
+                    Gap (px)
+                  </Label>
+                  <Input
+                    id="caption-gap"
+                    type="number"
+                    min={-500}
+                    max={500}
+                    step={4}
+                    value={captionGap}
+                    disabled={captionPosition === "none"}
+                    onChange={(e) => setCaptionGap(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="space-y-2">
+                  <Label
+                    className={
+                      captionPosition === "none"
+                        ? "text-muted-foreground"
+                        : undefined
+                    }
+                  >
+                    Caption Font
+                  </Label>
+                  <Select
+                    value={captionFont}
+                    onValueChange={(v) => setCaptionFont(v as CaptionFont)}
+                    disabled={captionPosition === "none"}
+                  >
+                    <SelectTrigger className="bg-background w-full">
+                      <SelectValue placeholder="Font">
+                        {(value: CaptionFont) =>
+                          CAPTION_FONTS.find((font) => font.value === value)
+                            ?.label ?? value
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CAPTION_FONTS.map((font) => (
+                        <SelectItem key={font.value} value={font.value}>
+                          {font.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="caption-color"
+                    className={
+                      captionPosition === "none"
+                        ? "text-muted-foreground"
+                        : undefined
+                    }
+                  >
+                    Caption Color
+                  </Label>
+                  <ColorSwatchInput
+                    id="caption-color"
+                    value={captionColor}
+                    disabled={captionPosition === "none"}
+                    onChange={setCaptionColor}
+                  />
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Gap: inward from the QR edge. Negative pushes the caption
+                outside.
+              </p>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
+        {!contentOpen && !optionsOpen && <div className="flex-1" aria-hidden />}
       </Card>
 
       {/* RIGHT COLUMN: Unified Preview & Toolkit Output */}
@@ -1007,13 +1554,16 @@ export default function QrCodeMaker() {
               <span
                 className={cn(
                   "text-center break-all leading-tight max-w-full",
-                  CAPTION_FONTS.find((font) => font.value === captionFont)?.className,
+                  CAPTION_FONTS.find((font) => font.value === captionFont)
+                    ?.className,
                 )}
                 style={{
                   color: captionColor,
                   fontSize: `${captionFontSize}px`,
-                  marginTop: captionPosition === "bottom" ? captionOffset : undefined,
-                  marginBottom: captionPosition === "top" ? captionOffset : undefined,
+                  marginTop:
+                    captionPosition === "bottom" ? captionOffset : undefined,
+                  marginBottom:
+                    captionPosition === "top" ? captionOffset : undefined,
                 }}
               >
                 {captionText.trim() || EXAMPLE_INPUT}

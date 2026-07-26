@@ -29,6 +29,14 @@ const router = createBrowserRouter([
             Component: m.default,
           })),
       },
+      {
+        path: "tools/pdf-n-up-maker",
+        handle: { breadcrumb: ["Tools", "PDF N-up Maker"] },
+        lazy: () =>
+          import("../tools/pdf-n-up-maker/pdf-n-up-maker").then((m) => ({
+            Component: m.default,
+          })),
+      },
     ],
   },
 ])

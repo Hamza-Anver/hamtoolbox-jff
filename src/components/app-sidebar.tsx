@@ -50,6 +50,11 @@ const data: { navMain: (NavItem & { items?: NavItem[] })[] } = {
           kind: "route",
         },
         {
+          title: "PDF N-up Maker",
+          url: "/tools/pdf-n-up-maker",
+          kind: "route",
+        },
+        {
           title: "Data Fetching",
           url: "#",
           kind: "route",

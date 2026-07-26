@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import { Outlet, useMatches } from "react-router";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -19,6 +19,14 @@ import {
 
 interface RouteHandle {
   breadcrumb?: string | string[];
+  title?: string;
+}
+
+// The single prepend/postpend knob for every tab title — swap the order
+// here (or the separator) to change it site-wide.
+const SITE_NAME = "Hamza's Toolbox";
+function formatTitle(page?: string): string {
+  return page ? `${page} · ${SITE_NAME}` : SITE_NAME;
 }
 
 import { ThemeProvider } from "@/components/theme-provider";
@@ -27,11 +35,20 @@ export function RootLayout() {
   const matches = useMatches();
   const activeMatch = [...matches]
     .reverse()
-    .find((match) => (match.handle as RouteHandle | undefined)?.breadcrumb);
+    .find(
+      (match) =>
+        (match.handle as RouteHandle | undefined)?.breadcrumb ||
+        (match.handle as RouteHandle | undefined)?.title,
+    );
   const handle = activeMatch?.handle as RouteHandle | undefined;
   const crumbs = handle?.breadcrumb
     ? ([] as string[]).concat(handle.breadcrumb)
     : [];
+  const pageTitle = handle?.title ?? crumbs[crumbs.length - 1];
+
+  useEffect(() => {
+    document.title = formatTitle(pageTitle);
+  }, [pageTitle]);
 
   return (
     <ThemeProvider>

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Toolbox } from "lucide-react"
+import { tools } from "@/lib/tools"
 
 // "route" items are handled by the in-app router (React Router) and use
 // client-side navigation. "external" items point at a page built outside
@@ -38,28 +39,11 @@ const data: { navMain: (NavItem & { items?: NavItem[] })[] } = {
     {
       title: "Tools",
       url: "#",
-      items: [
-        {
-          title: "LaTeX to Image",
-          url: "/tools/latex-to-image",
-          kind: "route",
-        },
-        {
-          title: "QR Code Maker",
-          url: "/tools/qr-code-maker",
-          kind: "route",
-        },
-        {
-          title: "PDF N-up Maker",
-          url: "/tools/pdf-n-up-maker",
-          kind: "route",
-        },
-        {
-          title: "Data Fetching",
-          url: "#",
-          kind: "route",
-        },
-      ],
+      items: tools.map((tool) => ({
+        title: tool.title,
+        url: tool.url,
+        kind: "route",
+      })),
     },
   ],
 }

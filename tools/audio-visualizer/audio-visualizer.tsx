@@ -412,7 +412,7 @@ export default function AudioVisualizer() {
             <div ref={spectrogramRef} />
             {duration > 0 && (
               <div
-                className="absolute top-0 bottom-0 w-px bg-foreground z-20 pointer-events-none"
+                className="absolute top-0 bottom-0 w-px bg-white z-20 pointer-events-none"
                 style={{ left: `${(currentTime / duration) * 100}%` }}
               />
             )}

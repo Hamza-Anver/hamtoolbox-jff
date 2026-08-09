@@ -1,7 +1,7 @@
 import { Link } from "react-router"
 
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { tools } from "@/lib/tools"
+import { toolsByCategory } from "@/lib/tools"
 
 export default function OverviewPage() {
   return (
@@ -18,22 +18,24 @@ export default function OverviewPage() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <h2 className="font-heading text-lg font-semibold">Tools</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {tools.map((tool) => (
-            <Link key={tool.url} to={tool.url}>
-              <Card className="h-full transition-colors hover:bg-muted/50">
-                <CardHeader>
-                  <tool.icon className="mb-2 size-5 text-muted-foreground" />
-                  <CardTitle>{tool.title}</CardTitle>
-                  <CardDescription>{tool.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
-          ))}
+      {toolsByCategory.map(({ category, tools }) => (
+        <div key={category} className="flex flex-col gap-3">
+          <h2 className="font-heading text-lg font-semibold">{category}</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {tools.map((tool) => (
+              <Link key={tool.url} to={tool.url}>
+                <Card className="h-full transition-colors hover:bg-muted/50">
+                  <CardHeader>
+                    <tool.icon className="mb-2 size-5 text-muted-foreground" />
+                    <CardTitle>{tool.title}</CardTitle>
+                    <CardDescription>{tool.description}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   )
 }

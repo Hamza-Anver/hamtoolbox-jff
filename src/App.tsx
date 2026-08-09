@@ -45,6 +45,14 @@ const router = createBrowserRouter([
             Component: m.default,
           })),
       },
+      {
+        path: "tools/audio-visualizer",
+        handle: { breadcrumb: ["Tools", "Audio Visualizer"] },
+        lazy: () =>
+          import("../tools/audio-visualizer/audio-visualizer").then((m) => ({
+            Component: m.default,
+          })),
+      },
     ],
   },
 ])

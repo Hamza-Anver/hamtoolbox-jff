@@ -1,4 +1,4 @@
-import { FileStack, ImageIcon, QrCode, Sigma, type LucideIcon } from "lucide-react"
+import { AudioWaveform, FileStack, ImageIcon, QrCode, Sigma, type LucideIcon } from "lucide-react"
 
 // Single source of truth for the tool catalog. The sidebar nav and the
 // About page both render from this list, so adding a tool here is enough
@@ -41,6 +41,13 @@ export const tools: ToolMeta[] = [
     description: "Place an image onto an A4 or A3 PDF page with margins.",
     icon: ImageIcon,
     category: "PDF",
+  },
+  {
+    title: "Audio Visualizer",
+    url: "/tools/audio-visualizer",
+    description: "Play an audio file and see its waveform and spectrogram.",
+    icon: AudioWaveform,
+    category: "Misc",
   },
 ]
 

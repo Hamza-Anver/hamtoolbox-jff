@@ -13,8 +13,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarRail,
-  SidebarSeparator,
+  SidebarRail
 } from "@/components/ui/sidebar"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Button } from "@/components/ui/button"
@@ -74,7 +73,6 @@ export function AppSidebar(props: AppSidebarProps) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarSeparator className="mx-0" />
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>

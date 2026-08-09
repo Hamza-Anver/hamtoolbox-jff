@@ -19,7 +19,9 @@ import {
 
 interface RouteHandle {
   breadcrumb?: string | string[];
-  title?: string;
+  // Explicit `null` opts out of the breadcrumb fallback below, so the tab
+  // title is just the site name with no page segment.
+  title?: string | null;
 }
 
 // The single prepend/postpend knob for every tab title — swap the order
@@ -44,7 +46,10 @@ export function RootLayout() {
   const crumbs = handle?.breadcrumb
     ? ([] as string[]).concat(handle.breadcrumb)
     : [];
-  const pageTitle = handle?.title ?? crumbs[crumbs.length - 1];
+  const pageTitle =
+    handle?.title !== undefined
+      ? (handle.title ?? undefined)
+      : crumbs[crumbs.length - 1];
 
   useEffect(() => {
     document.title = formatTitle(pageTitle);

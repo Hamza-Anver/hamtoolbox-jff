@@ -9,9 +9,9 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        handle: { breadcrumb: "About This Project" },
+        handle: { breadcrumb: "Overview", title: null },
         lazy: () =>
-          import("@/pages/about").then((m) => ({ Component: m.default })),
+          import("@/pages/overview").then((m) => ({ Component: m.default })),
       },
       {
         path: "tools/latex-to-image",

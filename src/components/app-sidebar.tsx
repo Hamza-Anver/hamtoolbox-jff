@@ -16,7 +16,8 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { ModeToggle } from "@/components/mode-toggle"
-import { Toolbox } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { SiGithub } from "react-icons/si"
 import { tools } from "@/lib/tools"
 
 // "route" items are handled by the in-app router (React Router) and use
@@ -32,7 +33,7 @@ type NavItem = {
 const data: { navMain: (NavItem & { items?: NavItem[] })[] } = {
   navMain: [
     {
-      title: "About This Project",
+      title: "Overview",
       url: "/",
       kind: "route",
     },
@@ -66,8 +67,8 @@ export function AppSidebar(props: AppSidebarProps) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link to="/" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <Toolbox className="size-4" />
+              <div className="flex aspect-square size-10 items-center justify-center text-sidebar-primary-foreground">
+                <img src="/favicon.svg" alt="" className="size-6" />
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-medium">Hamza's Toolbox</span>
@@ -108,7 +109,15 @@ export function AppSidebar(props: AppSidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="items-end">
+      <SidebarFooter className="flex-row items-center justify-end gap-2">
+        <Button
+          variant="outline"
+          render={<a href="https://github.com/Hamza-Anver/hamtoolbox-jff" target="_blank" rel="noreferrer" />}
+        >
+          <SiGithub className="h-[1.1rem] w-[1.1rem]" />
+          <span className="sr-only">GitHub</span>
+          GitHub
+        </Button>
         <ModeToggle />
       </SidebarFooter>
       <SidebarRail />

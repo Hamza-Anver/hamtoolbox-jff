@@ -37,6 +37,14 @@ const router = createBrowserRouter([
             Component: m.default,
           })),
       },
+      {
+        path: "tools/image-to-pdf",
+        handle: { breadcrumb: ["Tools", "Image to PDF"] },
+        lazy: () =>
+          import("../tools/image-to-pdf/image-to-pdf").then((m) => ({
+            Component: m.default,
+          })),
+      },
     ],
   },
 ])

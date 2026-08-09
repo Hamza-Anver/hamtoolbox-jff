@@ -1,4 +1,4 @@
-import { FileStack, QrCode, Sigma, type LucideIcon } from "lucide-react"
+import { FileStack, ImageIcon, QrCode, Sigma, type LucideIcon } from "lucide-react"
 
 // Single source of truth for the tool catalog. The sidebar nav and the
 // About page both render from this list, so adding a tool here is enough
@@ -33,6 +33,13 @@ export const tools: ToolMeta[] = [
     url: "/tools/pdf-n-up-maker",
     description: "Lay multiple PDF pages out onto one sheet for printing.",
     icon: FileStack,
+    category: "PDF",
+  },
+  {
+    title: "Image to PDF",
+    url: "/tools/image-to-pdf",
+    description: "Place an image onto an A4 or A3 PDF page with margins.",
+    icon: ImageIcon,
     category: "PDF",
   },
 ]
